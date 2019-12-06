@@ -5,7 +5,7 @@ application = Flask(__name__)
 
 USER = os.environ.get("POSTGRESQL_USER")
 PASSWORD = os.environ.get("POSTGRESQL_PASSWORD")
-HOST = "127.0.0.1"
+HOST = "172.30.144.174"
 PORT = "5432"
 DATABASE = os.environ.get("POSTGRESQL_DATABASE")
 
