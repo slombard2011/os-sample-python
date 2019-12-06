@@ -1,22 +1,28 @@
 from flask import Flask
 import psycopg2
 import os
-application = Flask(__name__)
+app = Flask(__name__)
 
+key_list = list(os.environ.keys())
+host_key = [s for s in key_list if "POSTGRESQL_IP_SERVICE_HOST" in s][0]
 USER = os.environ.get("POSTGRESQL_USER")
 PASSWORD = os.environ.get("POSTGRESQL_PASSWORD")
-HOST = "172.30.144.174"
+HOST = os.environ[host_key]
 PORT = "5432"
 DATABASE = os.environ.get("POSTGRESQL_DATABASE")
 
-@application.route('/')
+@app.route('/')
+def hello_world():
+    return 'Hello World - Python!'
+
+@app.route('/postgresql')
 def health_check():
     try:
         connection = psycopg2.connect(user = USER,
                                       password = PASSWORD,
                                       host = HOST,
                                       port = PORT,
-                                      database = DATABASE)
+                                      database =DATABASE )
         cursor = connection.cursor()
         cursor.execute("SELECT version();")
         record = cursor.fetchone()
@@ -29,4 +35,4 @@ def health_check():
         return ('Unable to connect to the database!\n{0}').format(error)
 
 if __name__ == '__main__':
-    application.run()
+    app.run()
