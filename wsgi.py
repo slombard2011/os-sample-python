@@ -3,13 +3,11 @@ import psycopg2
 import os
 application = Flask(__name__)
 
-key_list = list(os.environ.keys())
-host_key = [s for s in key_list if "POSTGRESQL_IP_SERVICE_HOST" in s][0]
 USER = os.environ.get("POSTGRESQL_USER")
 PASSWORD = os.environ.get("POSTGRESQL_PASSWORD")
-HOST = os.environ[host_key]
 PORT = "5432"
 DATABASE = os.environ.get("POSTGRESQL_DATABASE")
+HOST = os.environ.get("POSTGRESQL_HOSTNAME")
 
 @application.route('/')
 def hello_world():
