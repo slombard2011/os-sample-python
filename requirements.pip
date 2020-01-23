@@ -1,0 +1,4 @@
+gunicorn
+Flask
+psycopg2
+nose
