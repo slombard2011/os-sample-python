@@ -7,11 +7,11 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.build.timestamp.format>MM.dd.HHmm</maven.build.timestamp.format>
-    <python_package>sample_pb</python_package>
+    <python_package>mobile_package</python_package>
     <description>Sample protocol buffer bindings for python</description>
-    <author>Justin Bailey</author>
-    <author_email>justin.bailey@urbanairship.com</author_email>
-    <source_url>https://github.com/urbanairship/maven_python</source_url>
+    <author>gis</author>
+    <author_email>gis@gis.com</author_email>
+    <source_url>https://github.com/slombard2011/os-sample-python</source_url>
     <!-- Use a non-existent phase to make sure python tasks only
     run when one of the profiles below is activated. -->
     <python_compile_phase>never</python_compile_phase>
@@ -175,7 +175,7 @@ python installed, if they don't need python bindings.
         <includes>
           <include>setup.py</include>
           <include>MANIFEST.in</include>
-          <include>requirements.txt</include>
+          <include>requirements.pip</include>
         </includes>
         <targetPath>${project.build.directory}/generated-sources/python</targetPath>
         <filtering>true</filtering>
