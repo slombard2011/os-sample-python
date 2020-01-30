@@ -1,0 +1,570 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+labels:
+  template: python-postgresql-httpd-2
+message: >-
+  The following service(s) have been created in your project: ${APP_NAME},
+  ${DATABASE_SERVICE_NAME}.
+
+    Deployment ID: ${DEPL_ID}
+
+    ${DATABASE_SERVICE_NAME}:
+            Username: ${POSTGRESQL_USER}
+            Password: ${POSTGRESQL_PASSWORD}
+       Database Name: ${POSTGRESQL_DATABASE}
+      Connection URL: postgres://${DATABASE_SERVICE_NAME}:5432/
+
+  For more information about using this template, including OpenShift
+  considerations, see
+  https://github.com/{{tmpl_vars['github']['org']}}/{{tmpl_vars['github']['repo']}}/blob/{{tmpl_vars['github']['branch']}}/${TEMPLATE_NAME}/
+metadata:
+  annotations:
+    description: >-
+      Run your Python app with embedded PostgreSQL Database backend.
+
+
+      For more information about using this template, including OpenShift
+      considerations, see
+      https://github.com/{{tmpl_vars['github']['org']}}/{{tmpl_vars['github']['repo']}}/blob/{{tmpl_vars['github']['branch']}}/${TEMPLATE_NAME}/
+
+
+      NOTE: Scaling PostgreSQL to more than one replica is not supported. You
+      must have persistent volumes available in your cluster to use this
+      template.
+    iconClass: icon-python
+    openshift.io/display-name: Python + PostgreSQL + httpd
+    tags: 'oif,cip,cippoctmpl,python,postgresql,httpd'
+    template.openshift.io/documentation-url: >-
+      https://github.com/{{tmpl_vars['github']['org']}}/{{tmpl_vars['github']['repo']}}/blob/{{tmpl_vars['github']['branch']}}/${TEMPLATE_NAME}/README.md
+    template.openshift.io/long-description: >-
+      This template provides a multi-tiered application topology composed of the
+      following resources:
+        - an app pod with two containers:
+          - frontend: an httpd proxyfiing requests to the backend and serving static content
+          - backend: running python app
+        - a database pod with one container:
+          - postgresql: the PostgreSQL DB engine
+        - the following route allowing access to the app
+          - route to app pod frontend container
+
+      For more information about using this template, including OpenShift
+      considerations, see
+      https://github.com/{{tmpl_vars['github']['org']}}/{{tmpl_vars['github']['repo']}}/blob/{{tmpl_vars['github']['branch']}}/${TEMPLATE_NAME}/
+
+
+      NOTE: Scaling PostgreSQL to more than one replica is not supported. You
+      must have persistent volumes available in your cluster to use this
+      template.
+    template.openshift.io/provider-display-name: CIP R&D
+    template.openshift.io/support-url: >-
+      https://github.com/{{tmpl_vars['github']['org']}}/{{tmpl_vars['github']['repo']}}/issues
+  name: cip-python-postgresql-httpd
+objects:
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-frontend-runtime-${DEPL_ID}'
+    spec:
+      lookupPolicy:
+        local: false
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-backend-${DEPL_ID}'
+    spec:
+      lookupPolicy:
+        local: false
+  - apiVersion: v1
+    kind: BuildConfig
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+        build: '${FE_RUNTIME_IMAGE}'
+      name: '${APP_NAME}-frontend-runtime-${DEPL_ID}'
+    spec:
+      nodeSelector: null
+      output:
+        to:
+          kind: ImageStreamTag
+          name: '${APP_NAME}-frontend-runtime-${DEPL_ID}:latest'
+      postCommit: {}
+      resources: {}
+      runPolicy: Serial
+      source:
+        contextDir: /
+        git:
+          ref: master
+          uri: ${FRONTEND_GIT_REPO}
+        type: Git
+      strategy:
+        sourceStrategy:
+          from:
+            kind: ImageStreamTag
+            name: 'nginx:latest'
+            namespace: openshift
+        type: Source
+      triggers:
+        - type: ConfigChange
+  - apiVersion: v1
+    kind: DeploymentConfig
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-whiteapp-${DEPL_ID}'
+    spec:
+      replicas: 1
+      selector:
+        app: '${APP_NAME}-${DEPL_ID}'
+        deploymentconfig: '${APP_NAME}-whiteapp-${DEPL_ID}'
+      strategy:
+        activeDeadlineSeconds: 21600
+        resources: {}
+        rollingParams:
+          intervalSeconds: 1
+          maxSurge: 25%
+          maxUnavailable: 25%
+          timeoutSeconds: 600
+          updatePeriodSeconds: 1
+        type: Rolling
+      template:
+        metadata:
+          labels:
+            app: '${APP_NAME}-${DEPL_ID}'
+            deploymentconfig: '${APP_NAME}-whiteapp-${DEPL_ID}'
+        spec:
+          containers:
+            - env:
+                - name: AWS_ACCESS_KEY_ID
+                  value: '${AWS_ACCESS_KEY_ID}'
+                - name: AWS_SECRET_ACCESS_KEY
+                  value: '${AWS_SECRET_ACCESS_KEY}'
+                - name: PYTHON_HOSTNAME
+                  value: '${APP_NAME}-whiteapp-python-${DEPL_ID}'
+              image: '${APP_NAME}-frontend-${DEPL_ID}:latest'
+              imagePullPolicy: Always
+              livenessProbe:
+                failureThreshold: 3
+                initialDelaySeconds: 1
+                periodSeconds: 10
+                successThreshold: 1
+                tcpSocket:
+                  port: 8080
+                timeoutSeconds: 1
+              name: frontend
+              ports:
+                - containerPort: 8080
+                  protocol: TCP
+              readinessProbe:
+                failureThreshold: 3
+                initialDelaySeconds: 1
+                periodSeconds: 10
+                successThreshold: 1
+                tcpSocket:
+                  port: 8080
+                timeoutSeconds: 1
+              resources: {}
+              terminationMessagePath: /dev/termination-log
+            - env:
+                - name: APP_SCRIPT
+                  value: '${APP_SCRIPT}'
+                - name: POSTGRESQL_HOST
+                  value: '${DATABASE_SERVICE_NAME}'
+                - name: POSTGRESQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-user
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: POSTGRESQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-password
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: POSTGRESQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-name
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: POSTGRESQL_HOSTNAME
+                  value: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: AWS_ACCESS_KEY_ID
+                  value: '${AWS_ACCESS_KEY_ID}'
+                - name: AWS_SECRET_ACCESS_KEY
+                  value: '${AWS_SECRET_ACCESS_KEY}'
+              image: '${APP_NAME}-backend-${DEPL_ID}:latest'
+              imagePullPolicy: Always
+              livenessProbe:
+                failureThreshold: 3
+                initialDelaySeconds: 1
+                periodSeconds: 10
+                successThreshold: 1
+                tcpSocket:
+                  port: 5000
+                timeoutSeconds: 5
+              name: backend
+              ports:
+                - containerPort: 5000
+                  protocol: TCP
+              readinessProbe:
+                failureThreshold: 3
+                initialDelaySeconds: 1
+                periodSeconds: 10
+                successThreshold: 1
+                tcpSocket:
+                  port: 5000
+                timeoutSeconds: 5
+              resources: {}
+              terminationMessagePath: /dev/termination-log
+          dnsPolicy: ClusterFirst
+          restartPolicy: Always
+          securityContext: {}
+          terminationGracePeriodSeconds: 30
+      test: false
+      triggers:
+        - imageChangeParams:
+            automatic: true
+            containerNames:
+              - backend
+            from:
+              kind: ImageStreamTag
+              name: '${APP_NAME}-backend-${DEPL_ID}:latest'
+          type: ImageChange
+        - imageChangeParams:
+            automatic: true
+            containerNames:
+              - frontend
+            from:
+              kind: ImageStreamTag
+              name: '${APP_NAME}-frontend-runtime-${DEPL_ID}:latest'
+          type: ImageChange
+        - type: ConfigChange
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-whiteapp-${DEPL_ID}'
+    spec:
+      ports:
+        - name: 8080-tcp
+          port: 8080
+          protocol: TCP
+          targetPort: 8080
+      selector:
+        app: '${APP_NAME}-${DEPL_ID}'
+        deploymentconfig: '${APP_NAME}-whiteapp-${DEPL_ID}'
+      sessionAffinity: None
+      type: ClusterIP
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-whiteapp-python-${DEPL_ID}'
+    spec:
+      ports:
+        - name: 5000-tcp
+          port: 5000
+          protocol: TCP
+          targetPort: 5000
+      selector:
+        app: '${APP_NAME}-${DEPL_ID}'
+        deploymentconfig: '${APP_NAME}-whiteapp-${DEPL_ID}'
+      sessionAffinity: None
+      type: ClusterIP
+  - apiVersion: v1
+    kind: Route
+    metadata:
+      annotations:
+        kubernetes.io/tls-acme: 'true'
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-whiteapp-${DEPL_ID}'
+    spec:
+      host: '${FE_ROUTE_NAME}'
+      port:
+        targetPort: 8080-tcp
+      tls:
+        insecureEdgeTerminationPolicy: Redirect
+        termination: edge
+      to:
+        kind: Service
+        name: '${APP_NAME}-whiteapp-${DEPL_ID}'
+        weight: 100
+      wildcardPolicy: None
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      annotations:
+        template.openshift.io/expose-database_name: '{.data[''database-name'']}'
+        template.openshift.io/expose-password: '{.data[''database-password'']}'
+        template.openshift.io/expose-root_password: '{.data[''database-root-password'']}'
+        template.openshift.io/expose-username: '{.data[''database-user'']}'
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+    stringData:
+      database-name: '${POSTGRESQL_DATABASE}'
+      database-password: '${POSTGRESQL_PASSWORD}'
+      database-root-password: '${POSTGRESQL_ADMIN_PASSWORD}'
+      database-user: '${POSTGRESQL_USER}'
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      annotations:
+        template.openshift.io/expose-uri: 'mysql://{.spec.clusterIP}:{.spec.ports[?(.name=="postgres")].port}'
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+    spec:
+      ports:
+        - name: postgres
+          port: 5432
+      selector:
+        name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: '${DB_VOLUME_CAPACITY}'
+  - apiVersion: v1
+    kind: DeploymentConfig
+    metadata:
+      annotations:
+        template.alpha.openshift.io/wait-for-ready: 'true'
+      labels:
+        app: '${APP_NAME}-${DEPL_ID}'
+      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+    spec:
+      replicas: 1
+      selector:
+        name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app: '${APP_NAME}-${DEPL_ID}'
+            name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+        spec:
+          containers:
+            - env:
+                - name: POSTGRESQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-user
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: POSTGRESQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-password
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: POSTGRESQL_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-root-password
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+                - name: POSTGRESQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      key: database-name
+                      name: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+              image: ' '
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                initialDelaySeconds: 30
+                tcpSocket:
+                  port: 5432
+                timeoutSeconds: 1
+              name: postgres
+              ports:
+                - containerPort: 5432
+              readinessProbe:
+                exec:
+                  command:
+                    - /bin/sh
+                    - '-i'
+                    - '-c'
+                    - >-
+                      psql -h 127.0.0.1 -U ${POSTGRESQL_USER} -q -d
+                      ${POSTGRESQL_DATABASE} -c 'SELECT 1'
+                initialDelaySeconds: 5
+                timeoutSeconds: 1
+              resources:
+                limits:
+                  memory: '${DB_MEMORY_LIMIT}'
+              volumeMounts:
+                - mountPath: /var/lib/pgsql/data
+                  name: '${DATABASE_SERVICE_NAME}-data'
+          volumes:
+            - name: '${DATABASE_SERVICE_NAME}-data'
+              persistentVolumeClaim:
+                claimName: '${APP_NAME}-${DATABASE_SERVICE_NAME}-${DEPL_ID}'
+      triggers:
+        - imageChangeParams:
+            automatic: true
+            containerNames:
+              - postgres
+            from:
+              kind: ImageStreamTag
+              name: '${DB_IMAGE}:${DB_IMAGE_TAG}'
+              namespace: '${DB_IMGSTR_NAMESPACE}'
+          type: ImageChange
+        - type: ConfigChange
+parameters:
+  - description: Name of the template
+    displayName: Template Name
+    name: TEMPLATE_NAME
+    required: true
+    value: cip-wa-httpd-flask-pgsql
+  - description: >-
+      Name of the application. All objects created by this template will be
+      prefixed by this app name
+    displayName: Application Name
+    name: APP_NAME
+    required: true
+    value: cip-python-psql-httpd
+  - description: >-
+      Unique app deployment identifyer. You can specify one or let the system
+      generate one automatically for you.
+    displayName: (Optional) Deployment ID
+    from: '[a-z]{5}'
+    generate: expression
+    name: DEPL_ID
+    required: true
+  - description: >-
+      (Optional) Name of the namespace containing BuildConfig ImageStream.
+      Leaving as default should be fine.
+    displayName: Namespace containing public images.
+    name: NS_GLOBAL_IMAGES
+    required: true
+    value: openshift
+  - description: git repository containing frontend source code
+    name: FRONTEND_GIT_REPO
+    required: true
+    value : 'https://github.com/slombard2011/front_html'
+  - description: git branch to use to fetch frontend source code
+    name: FRONTEND_GIT_REPO_REF
+    required: true
+    value: master
+  - description: git directory context to use to fetch frontend source code
+    name: FRONTEND_GIT_REPO_CONTEXT
+    required: true
+    value: /
+  - description: Name of the namespace containing BuildConfig ImageStream for backend
+    name: NS_FE_BC_IMAGES
+    required: true
+    value: openshift
+  - description: Name of the frontend runtime image to use
+    name: FE_RUNTIME_IMAGE
+    required: true
+    value: naginx
+  - description: Tag of the frontend runtime image to use
+    name: FE_RUNTIME_IMAGE_TAG
+    required: true
+    value: 'latest'
+  - description: Name of the namespace containing BuildConfig ImageStream for backend
+    name: NS_FE_IS_IMAGES
+    required: true
+    value: openshift
+  - description: Name of the namespace containing BuildConfig ImageStream for backend
+    name: FE_ROUTE_NAME
+  - description: git repository containing backend source code
+    name: BACKEND_GIT_REPO
+    required: true
+    value: 'https://github.com/slombard2011/os-sample-python'
+  - description: git branch to use to fetch backend source code
+    name: BACKEND_GIT_REPO_REF
+    required: true
+    value: master
+  - description: git directory context to use to fetch backend source code
+    name: BACKEND_GIT_REPO_CONTEXT
+    required: true
+    value: /
+  - description: Script to run to launch the app
+    name: APP_SCRIPT
+  - description: S2I image to use to build backend
+    name: BE_BC_IMAGE
+    required: true
+    value: 'python:3.5'
+  - description: Name of the namespace containing BuildConfig ImageStream for backend
+    name: NS_BE_BC_IMAGES
+    required: true
+    value: openshift
+  - description: >-
+      Github trigger secret.  A difficult to guess string encoded as part of the
+      webhook URL.  Not encrypted.
+    displayName: GitHub Webhook Secret
+    from: '[a-zA-Z0-9]{40}'
+    generate: expression
+    name: GITHUB_WEBHOOK_SECRET
+  - description: >-
+      (Optional) AWS Access Key ID to use to connect to AWS S3-compatible
+      storage backend
+    displayName: AWS Access Key ID
+    name: AWS_ACCESS_KEY_ID
+  - description: >-
+      (Optional) AWS Secret Access Key to use to connect to AWS S3-compatible
+      storage backend
+    displayName: AWS Secret Access Key
+    name: AWS_SECRET_ACCESS_KEY
+  - description: Database image to deploy. Currently support only PostgreSQL
+    name: DB_IMAGE
+    required: true
+    value: postgresql-12-rhel7
+  - description: Tag of the DB Image to deploy
+    name: DB_IMAGE_TAG
+    required: true
+    value: latest
+  - description: Maximum amount of memory the database container can use.
+    displayName: Database Memory Limit
+    name: DB_MEMORY_LIMIT
+    required: true
+    value: 512Mi
+  - description: The OpenShift Namespace where the database ImageStream resides.
+    displayName: Namespace
+    name: DB_IMGSTR_NAMESPACE
+    value: openshift
+  - description: The name of the OpenShift Service exposed for the database.
+    displayName: Database Service Name
+    name: DATABASE_SERVICE_NAME
+    required: true
+    value: postgresql
+  - description: Username for PostgreSQL user that will be used for accessing the database.
+    displayName: PostgreSQL Connection Username
+    from: 'user[A-Z0-9]{3}'
+    generate: expression
+    name: POSTGRESQL_USER
+    required: true
+  - description: Password for the PostgreSQL connection user.
+    displayName: PostgreSQL Connection Password
+    from: '[a-zA-Z0-9]{16}'
+    generate: expression
+    name: POSTGRESQL_PASSWORD
+    required: true
+  - description: Password for the PostgreSQL root user.
+    displayName: PostgreSQL root Password
+    from: '[a-zA-Z0-9]{16}'
+    generate: expression
+    name: POSTGRESQL_ADMIN_PASSWORD
+    required: true
+  - description: Name of the PostgreSQL database accessed.
+    displayName: PostgreSQL Database Name
+    name: POSTGRESQL_DATABASE
+    required: true
+    value: whiteappdb
+  - description: 'Database volume space available for data, e.g. 512Mi, 2Gi.'
+    displayName: Database Volume Capacity
+    name: DB_VOLUME_CAPACITY
+    required: true
+    value: 1Gi
